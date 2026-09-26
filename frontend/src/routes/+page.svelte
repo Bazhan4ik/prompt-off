@@ -50,8 +50,7 @@
     <div class="hero-content">
       <p class="eyebrow">AI · Image · Battle</p>
       <h1 class="title">
-        <span class="title-prompt">CLASH</span>
-        <span class="title-off">OF SLOP</span>
+        <img src="/logo.png" alt="Clash of Slop" class="title-logo" />
       </h1>
       <p class="subtitle">
         Write the sharpest prompt. Generate the best image.<br />
@@ -180,21 +179,14 @@
   }
 
   .title {
-    font-size: clamp(3.5rem, 12vw, 7.5rem);
-    font-weight: 900;
+    margin: 0;
     line-height: 1;
-    letter-spacing: -0.02em;
-    display: flex;
-    gap: 0.2em;
   }
 
-  .title-prompt {
-    color: var(--text-primary);
-  }
-
-  .title-off {
-    color: var(--accent-glow);
-    text-shadow: 0 0 40px #7fc80080, 0 0 80px #4d8f0060;
+  .title-logo {
+    height: clamp(5rem, 20vw, 12rem);
+    width: auto;
+    display: block;
   }
 
   .subtitle {

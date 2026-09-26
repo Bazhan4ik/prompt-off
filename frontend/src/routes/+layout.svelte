@@ -3,7 +3,7 @@
 </script>
 
 <div class="bg-logo" aria-hidden="true">
-  <img src="/logo.jpg" alt="" />
+  <img src="/logo.png" alt="" />
 </div>
 
 <slot />

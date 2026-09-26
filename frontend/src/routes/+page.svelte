@@ -184,7 +184,7 @@
   }
 
   .title-logo {
-    height: clamp(5rem, 20vw, 12rem);
+    height: 70vh;
     width: auto;
     display: block;
   }

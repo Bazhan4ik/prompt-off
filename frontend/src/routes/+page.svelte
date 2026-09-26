@@ -354,7 +354,7 @@
   .rank-silver .rank-badge { color: var(--silver); }
   .rank-bronze .rank-badge { color: var(--bronze); }
 
-  .col-user {
+  td.col-user {
     display: flex;
     align-items: center;
     gap: 0.75rem;

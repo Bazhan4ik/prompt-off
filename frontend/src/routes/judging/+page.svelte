@@ -5,6 +5,7 @@
   import { goto } from '$app/navigation';
   import { battleStore } from '$lib/battleStore';
   import { get } from 'svelte/store';
+  import { BACKEND_URL } from '$lib/backend';
 
   let battle = get(battleStore);
 
@@ -21,7 +22,7 @@
   onMount(() => {
     if (!battle) return;
 
-    socket = io();
+    socket = io(BACKEND_URL);
     socket.emit('join_judging', { roomId: battle.roomId });
 
     socket.on('judgment_result', (data) => {

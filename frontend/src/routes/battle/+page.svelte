@@ -4,6 +4,7 @@
   import { io } from 'socket.io-client';
   import { goto } from '$app/navigation';
   import { battleStore } from '$lib/battleStore';
+  import { BACKEND_URL } from '$lib/backend';
 
   /** @type {'waiting' | 'matched' | 'submitting' | 'image_ready'} */
   let state = 'waiting';
@@ -16,7 +17,7 @@
   let socket;
 
   onMount(() => {
-    socket = io();
+    socket = io(BACKEND_URL);
     socket.emit('join_queue');
 
     socket.on('match_found', (data) => {

@@ -1,5 +1,6 @@
 <script>
   import { onMount } from 'svelte';
+  import { BACKEND_URL } from '$lib/backend';
 
   let leaderboard = [];
   let loading = true;
@@ -7,7 +8,7 @@
 
   onMount(async () => {
     try {
-      const res = await fetch('/api/leaderboard');
+      const res = await fetch(`${BACKEND_URL}/api/leaderboard`);
       if (!res.ok) throw new Error('Failed to fetch leaderboard');
       leaderboard = await res.json();
     } catch (e) {

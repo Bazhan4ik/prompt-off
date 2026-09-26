@@ -1,31 +1,69 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
+  import { fade } from 'svelte/transition';
   import { io } from 'socket.io-client';
   import { goto } from '$app/navigation';
 
-  /** @type {'waiting' | 'matched'} */
+  /** @type {'waiting' | 'matched' | 'submitting' | 'image_ready'} */
   let state = 'waiting';
   let topic = '';
+  let roomId = '';
   let prompt = '';
+  let imageBase64 = '';
+  let imageMime = 'image/jpeg';
+  let opponentReady = false;
+  let errorMsg = '';
   let socket;
 
   onMount(() => {
     socket = io();
     socket.emit('join_queue');
+
     socket.on('match_found', (data) => {
       topic = data.topic;
+      roomId = data.roomId;
       state = 'matched';
+    });
+
+    socket.on('generating', () => {
+      state = 'submitting';
+    });
+
+    socket.on('image_ready', (data) => {
+      imageBase64 = data.base64;
+      imageMime = data.mimeType ?? 'image/jpeg';
+      state = 'image_ready';
+    });
+
+    socket.on('both_ready', () => {
+      goto(`/judging?room=${roomId}`);
+    });
+
+    socket.on('generation_error', (data) => {
+      errorMsg = data.message;
+      state = 'matched'; // let them retry
+    });
+
+    socket.on('opponent_disconnected', () => {
+      errorMsg = 'Your opponent disconnected.';
     });
   });
 
   onDestroy(() => {
     socket?.disconnect();
   });
+
+  function submitPrompt() {
+    if (!prompt.trim() || !roomId) return;
+    socket.emit('submit_prompt', { roomId, prompt });
+  }
 </script>
 
 <div class="page">
+
+  <!-- ── Waiting for match ── -->
   {#if state === 'waiting'}
-    <div class="waiting">
+    <div class="waiting" in:fade={{ duration: 200 }}>
       <div class="radar">
         <div class="ring ring-1"></div>
         <div class="ring ring-2"></div>
@@ -37,11 +75,17 @@
       <button class="cancel-btn" on:click={() => goto('/')}>Cancel</button>
     </div>
 
+  <!-- ── Write your prompt ── -->
   {:else if state === 'matched'}
-    <div class="battle" in:fade>
+    <div class="battle" in:fade={{ duration: 300 }}>
       <p class="found-badge">⚔ Opponent found!</p>
       <h2 class="topic-label">Describe</h2>
       <p class="topic">{topic}</p>
+
+      {#if errorMsg}
+        <p class="error-msg">{errorMsg}</p>
+      {/if}
+
       <textarea
         class="prompt-input"
         placeholder="Write your image prompt here…"
@@ -50,16 +94,56 @@
         autofocus
       ></textarea>
       <div class="char-count">{prompt.length} / 400</div>
-      <button class="submit-btn" disabled={prompt.trim().length === 0}>
+
+      <button
+        class="submit-btn"
+        disabled={prompt.trim().length === 0}
+        on:click={submitPrompt}
+      >
         Submit Prompt
       </button>
     </div>
-  {/if}
-</div>
 
-<script context="module">
-  import { fade } from 'svelte/transition';
-</script>
+  <!-- ── Generating image ── -->
+  {:else if state === 'submitting'}
+    <div class="generating" in:fade={{ duration: 200 }}>
+      <div class="gen-spinner">
+        <div class="spinner-ring"></div>
+        <div class="spinner-icon">✦</div>
+      </div>
+      <h2 class="gen-title">Generating your image…</h2>
+      <p class="gen-sub">Gemini is painting your vision</p>
+      <p class="gen-prompt">"{prompt}"</p>
+    </div>
+
+  <!-- ── Image ready ── -->
+  {:else if state === 'image_ready'}
+    <div class="result" in:fade={{ duration: 400 }}>
+      <p class="found-badge">Your image is ready!</p>
+      <p class="topic">{topic}</p>
+
+      <div class="image-wrap">
+        <img
+          src="data:{imageMime};base64,{imageBase64}"
+          alt="Your generated image"
+          class="generated-img"
+        />
+      </div>
+
+      <p class="gen-prompt">"{prompt}"</p>
+
+      <div class="waiting-opponent">
+        <div class="mini-pulse"></div>
+        <span>Waiting for opponent's image…</span>
+      </div>
+
+      {#if errorMsg}
+        <p class="error-msg">{errorMsg}</p>
+      {/if}
+    </div>
+  {/if}
+
+</div>
 
 <style>
   .page {
@@ -95,7 +179,6 @@
     animation: expand 2.4s ease-out infinite;
     opacity: 0;
   }
-
   .ring-1 { animation-delay: 0s; }
   .ring-2 { animation-delay: 0.8s; }
   .ring-3 { animation-delay: 1.6s; }
@@ -147,7 +230,7 @@
     color: var(--text-primary);
   }
 
-  /* ── Matched ── */
+  /* ── Matched / prompt input ── */
   .battle {
     display: flex;
     flex-direction: column;
@@ -178,10 +261,20 @@
   }
 
   .topic {
-    font-size: clamp(1.6rem, 4vw, 2.4rem);
+    font-size: clamp(1.5rem, 4vw, 2.2rem);
     font-weight: 800;
     color: var(--text-primary);
     line-height: 1.2;
+  }
+
+  .error-msg {
+    font-size: 0.85rem;
+    color: var(--loss);
+    background: #ef444415;
+    border: 1px solid #ef444430;
+    border-radius: 8px;
+    padding: 0.5rem 1rem;
+    width: 100%;
   }
 
   .prompt-input {
@@ -241,5 +334,104 @@
     opacity: 0.35;
     cursor: not-allowed;
     box-shadow: none;
+  }
+
+  /* ── Generating ── */
+  .generating {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.5rem;
+    text-align: center;
+    max-width: 480px;
+  }
+
+  .gen-spinner {
+    position: relative;
+    width: 72px;
+    height: 72px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .spinner-ring {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    border: 3px solid transparent;
+    border-top-color: var(--accent-glow);
+    border-right-color: var(--accent-glow);
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .spinner-icon {
+    font-size: 1.5rem;
+    color: var(--accent-glow);
+    animation: throb 2s ease-in-out infinite;
+  }
+
+  .gen-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+  }
+
+  .gen-sub {
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+    margin-top: -0.75rem;
+  }
+
+  .gen-prompt {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    font-style: italic;
+    max-width: 400px;
+    line-height: 1.5;
+  }
+
+  /* ── Image result ── */
+  .result {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.25rem;
+    width: 100%;
+    max-width: 560px;
+    text-align: center;
+  }
+
+  .image-wrap {
+    width: 100%;
+    border-radius: 16px;
+    overflow: hidden;
+    border: 1px solid var(--bg-border);
+    box-shadow: 0 0 40px #7c3aed30;
+  }
+
+  .generated-img {
+    width: 100%;
+    display: block;
+    object-fit: cover;
+  }
+
+  .waiting-opponent {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+  }
+
+  .mini-pulse {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent-glow);
+    animation: throb 1.2s ease-in-out infinite;
   }
 </style>

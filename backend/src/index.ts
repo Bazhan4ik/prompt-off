@@ -10,10 +10,7 @@ const httpServer = createServer(app);
 const io = new Server(httpServer, { cors: { origin: '*' } });
 const PORT = 3001;
 
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY!,
-  httpOptions: { apiVersion: 'v1alpha' },
-});
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
 app.use(cors());
 app.use(express.json());
@@ -72,7 +69,7 @@ const socketToRoom = new Map<string, string>();
 
 async function generateImage(prompt: string): Promise<{ base64: string; mimeType: string }> {
   const response = await ai.models.generateContent({
-    model: 'gemini-2.0-flash-preview-image-generation',
+    model: 'gemini-2.5-flash-image',
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
     config: { responseModalities: ['IMAGE'] },
   });

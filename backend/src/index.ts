@@ -183,10 +183,9 @@ Respond with JSON only: {"prompt": "..."}`,
 }
 
 async function generateImage(prompt: string): Promise<ImageData> {
-  const fastPrompt = `Simple flat cartoon illustration, minimal detail, bold outlines, limited color palette: ${prompt}`;
   const response = await ai.models.generateContent({
     model: 'gemini-2.5-flash-image',
-    contents: [{ role: 'user', parts: [{ text: fastPrompt }] }],
+    contents: [{ role: 'user', parts: [{ text: prompt }] }],
     config: { responseModalities: ['IMAGE'] },
   });
 

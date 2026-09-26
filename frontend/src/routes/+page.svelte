@@ -184,7 +184,7 @@
   }
 
   .title-logo {
-    height: 70vh;
+    height: 50vh;
     width: auto;
     display: block;
   }

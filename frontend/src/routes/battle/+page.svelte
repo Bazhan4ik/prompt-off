@@ -6,54 +6,62 @@
   import { battleStore } from '$lib/battleStore';
   import { BACKEND_URL } from '$lib/backend';
 
-  /** @type {'waiting' | 'matched' | 'submitting' | 'image_ready'} */
-  let state = 'waiting';
-  let topic = '';
+  type State = 'waiting' | 'loading_challenge' | 'writing' | 'submitted';
+
+  let state: State = 'waiting';
   let roomId = '';
-  let prompt = '';
-  let imageBase64 = '';
-  let imageMime = 'image/jpeg';
+  let referenceImage: { base64: string; mimeType: string } | null = null;
+  let guess = '';
   let errorMsg = '';
-  let socket;
+  let socket: ReturnType<typeof io>;
+
+  // collected on both_ready, stored before navigating
+  let pendingBattle: { topic: string; players: string[]; guesses: Record<string, string>; referenceImage: { base64: string; mimeType: string } } | null = null;
 
   onMount(() => {
     socket = io(BACKEND_URL);
     socket.emit('join_queue');
 
-    socket.on('match_found', (data) => {
-      topic = data.topic;
+    socket.on('match_found', (data: { roomId: string }) => {
       roomId = data.roomId;
-      state = 'matched';
+      state = 'loading_challenge';
     });
 
-    socket.on('generating', () => {
-      state = 'submitting';
+    socket.on('reference_ready', (data: { referenceImage: { base64: string; mimeType: string } }) => {
+      referenceImage = data.referenceImage;
+      state = 'writing';
     });
 
-    socket.on('image_ready', (data) => {
-      imageBase64 = data.base64;
-      imageMime = data.mimeType ?? 'image/jpeg';
-      state = 'image_ready';
+    socket.on('reference_error', (data: { message: string }) => {
+      errorMsg = data.message;
     });
 
-    socket.on('both_ready', (data) => {
-      const myIndex = data.players.indexOf(socket.id);
-      const opponentId = data.players[myIndex === 0 ? 1 : 0];
+    socket.on('guess_submitted', () => {
+      state = 'submitted';
+    });
+
+    socket.on('both_ready', (data: typeof pendingBattle) => {
+      pendingBattle = data;
+    });
+
+    socket.on('judgment_result', () => {
+      if (!pendingBattle) return;
+      const myIndex = pendingBattle.players.indexOf(socket.id);
+      const opponentId = pendingBattle.players[myIndex === 0 ? 1 : 0];
       battleStore.set({
-        roomId: data.roomId,
-        topic: data.topic,
+        roomId,
+        originalTopic: pendingBattle.topic,
         playerNumber: (myIndex + 1) as 1 | 2,
-        myImage: data.images[socket.id],
-        myPrompt: data.prompts[socket.id],
-        opponentImage: data.images[opponentId],
-        opponentPrompt: data.prompts[opponentId],
+        referenceImage: pendingBattle.referenceImage!,
+        myGuess: pendingBattle.guesses[socket.id],
+        opponentGuess: pendingBattle.guesses[opponentId],
       });
       goto('/judging');
     });
 
-    socket.on('generation_error', (data) => {
+    socket.on('generation_error', (data: { message: string }) => {
       errorMsg = data.message;
-      state = 'matched';
+      state = 'writing';
     });
 
     socket.on('opponent_disconnected', () => {
@@ -65,9 +73,9 @@
     socket?.disconnect();
   });
 
-  function submitPrompt() {
-    if (!prompt.trim() || !roomId) return;
-    socket.emit('submit_prompt', { roomId, prompt });
+  function submitGuess() {
+    if (!guess.trim() || !roomId) return;
+    socket.emit('submit_guess', { roomId, guess });
   }
 </script>
 
@@ -75,24 +83,49 @@
 
   <!-- ── Waiting for match ── -->
   {#if state === 'waiting'}
-    <div class="waiting" in:fade={{ duration: 200 }}>
+    <div class="center-stack" in:fade={{ duration: 200 }}>
       <div class="radar">
         <div class="ring ring-1"></div>
         <div class="ring ring-2"></div>
         <div class="ring ring-3"></div>
         <div class="pulse"></div>
       </div>
-      <h2 class="searching-title">Finding your opponent…</h2>
-      <p class="searching-sub">Get ready to craft the perfect prompt</p>
-      <button class="cancel-btn" on:click={() => goto('/')}>Cancel</button>
+      <h2 class="big-label">Finding your opponent…</h2>
+      <p class="sub">Get ready to guess</p>
+      <button class="ghost-btn" on:click={() => goto('/')}>Cancel</button>
     </div>
 
-  <!-- ── Write your prompt ── -->
-  {:else if state === 'matched'}
-    <div class="battle" in:fade={{ duration: 300 }}>
-      <p class="found-badge">⚔ Opponent found!</p>
-      <h2 class="topic-label">Describe</h2>
-      <p class="topic">{topic}</p>
+  <!-- ── Opponent found, generating reference image ── -->
+  {:else if state === 'loading_challenge'}
+    <div class="center-stack" in:fade={{ duration: 250 }}>
+      <div class="gen-spinner">
+        <div class="spinner-ring"></div>
+        <span class="spinner-icon">✦</span>
+      </div>
+      <h2 class="big-label">Opponent found!</h2>
+      <p class="sub">Generating your challenge image…</p>
+
+      {#if errorMsg}
+        <p class="error-msg">{errorMsg}</p>
+      {/if}
+    </div>
+
+  <!-- ── Write your guess ── -->
+  {:else if state === 'writing'}
+    <div class="writing-layout" in:fade={{ duration: 300 }}>
+      <p class="found-badge">⚔ What prompt made this?</p>
+
+      {#if referenceImage}
+        <div class="ref-image-wrap">
+          <img
+            src="data:{referenceImage.mimeType};base64,{referenceImage.base64}"
+            alt="Challenge image"
+            class="ref-image"
+          />
+        </div>
+      {/if}
+
+      <p class="guess-instruction">Write the prompt you think generated this image</p>
 
       {#if errorMsg}
         <p class="error-msg">{errorMsg}</p>
@@ -100,55 +133,40 @@
 
       <textarea
         class="prompt-input"
-        placeholder="Write your image prompt here…"
+        placeholder="Describe what you think the original prompt was…"
         maxlength="400"
-        bind:value={prompt}
+        bind:value={guess}
         autofocus
       ></textarea>
-      <div class="char-count">{prompt.length} / 400</div>
+      <div class="char-count">{guess.length} / 400</div>
 
       <button
         class="submit-btn"
-        disabled={prompt.trim().length === 0}
-        on:click={submitPrompt}
+        disabled={guess.trim().length === 0}
+        on:click={submitGuess}
       >
-        Submit Prompt
+        Submit Guess
       </button>
     </div>
 
-  <!-- ── Generating image ── -->
-  {:else if state === 'submitting'}
-    <div class="generating" in:fade={{ duration: 200 }}>
-      <div class="gen-spinner">
-        <div class="spinner-ring"></div>
-        <div class="spinner-icon">✦</div>
-      </div>
-      <h2 class="gen-title">Generating your image…</h2>
-      <p class="gen-sub">Gemini is painting your vision</p>
-      <p class="gen-prompt">"{prompt}"</p>
-    </div>
-
-  <!-- ── Image ready ── -->
-  {:else if state === 'image_ready'}
-    <div class="result" in:fade={{ duration: 400 }}>
-      <p class="found-badge">Your image is ready!</p>
-      <p class="topic">{topic}</p>
-
-      <div class="image-wrap">
-        <img
-          src="data:{imageMime};base64,{imageBase64}"
-          alt="Your generated image"
-          class="generated-img"
-        />
-      </div>
-
-      <p class="gen-prompt">"{prompt}"</p>
-
+  <!-- ── Guess submitted, waiting for opponent ── -->
+  {:else if state === 'submitted'}
+    <div class="center-stack" in:fade={{ duration: 200 }}>
+      {#if referenceImage}
+        <div class="ref-image-wrap ref-image-small">
+          <img
+            src="data:{referenceImage.mimeType};base64,{referenceImage.base64}"
+            alt="Challenge image"
+            class="ref-image"
+          />
+        </div>
+      {/if}
+      <div class="your-guess-label">Your guess</div>
+      <p class="your-guess-text">"{guess}"</p>
       <div class="waiting-opponent">
         <div class="mini-pulse"></div>
-        <span>Waiting for opponent's image…</span>
+        <span>Waiting for opponent's guess…</span>
       </div>
-
       {#if errorMsg}
         <p class="error-msg">{errorMsg}</p>
       {/if}
@@ -166,15 +184,30 @@
     padding: 2rem;
   }
 
-  /* ── Waiting ── */
-  .waiting {
+  /* ── Shared centered stack ── */
+  .center-stack {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 1.5rem;
+    gap: 1.25rem;
     text-align: center;
+    max-width: 520px;
+    width: 100%;
   }
 
+  .big-label {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  .sub {
+    font-size: 0.95rem;
+    color: var(--text-secondary);
+    margin-top: -0.5rem;
+  }
+
+  /* ── Radar ── */
   .radar {
     position: relative;
     width: 120px;
@@ -210,154 +243,11 @@
   }
 
   @keyframes throb {
-    0%, 100% { transform: scale(1);    opacity: 1; }
+    0%, 100% { transform: scale(1); opacity: 1; }
     50%       { transform: scale(1.2); opacity: 0.7; }
   }
 
-  .searching-title {
-    font-size: 1.6rem;
-    font-weight: 700;
-    color: var(--text-primary);
-  }
-
-  .searching-sub {
-    font-size: 0.95rem;
-    color: var(--text-secondary);
-  }
-
-  .cancel-btn {
-    margin-top: 0.5rem;
-    padding: 0.5rem 1.5rem;
-    border-radius: 100px;
-    border: 1px solid var(--bg-border);
-    background: transparent;
-    color: var(--text-secondary);
-    cursor: pointer;
-    font-size: 0.85rem;
-    transition: border-color 0.15s, color 0.15s;
-  }
-
-  .cancel-btn:hover {
-    border-color: var(--accent-glow);
-    color: var(--text-primary);
-  }
-
-  /* ── Matched / prompt input ── */
-  .battle {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 1.25rem;
-    width: 100%;
-    max-width: 640px;
-    text-align: center;
-  }
-
-  .found-badge {
-    font-size: 0.8rem;
-    font-weight: 700;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--accent-glow);
-    background: #7c3aed18;
-    border: 1px solid #7c3aed40;
-    border-radius: 100px;
-    padding: 0.35rem 1rem;
-  }
-
-  .topic-label {
-    font-size: 1rem;
-    font-weight: 400;
-    color: var(--text-secondary);
-    margin-bottom: -0.75rem;
-  }
-
-  .topic {
-    font-size: clamp(1.5rem, 4vw, 2.2rem);
-    font-weight: 800;
-    color: var(--text-primary);
-    line-height: 1.2;
-  }
-
-  .error-msg {
-    font-size: 0.85rem;
-    color: var(--loss);
-    background: #ef444415;
-    border: 1px solid #ef444430;
-    border-radius: 8px;
-    padding: 0.5rem 1rem;
-    width: 100%;
-  }
-
-  .prompt-input {
-    width: 100%;
-    min-height: 180px;
-    padding: 1.1rem 1.25rem;
-    background: var(--bg-card);
-    border: 1px solid var(--bg-border);
-    border-radius: 14px;
-    color: var(--text-primary);
-    font-size: 1rem;
-    font-family: inherit;
-    line-height: 1.6;
-    resize: vertical;
-    transition: border-color 0.15s, box-shadow 0.15s;
-    outline: none;
-    margin-top: 0.5rem;
-  }
-
-  .prompt-input::placeholder {
-    color: var(--text-secondary);
-    opacity: 0.6;
-  }
-
-  .prompt-input:focus {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px #7c3aed25;
-  }
-
-  .char-count {
-    align-self: flex-end;
-    font-size: 0.75rem;
-    color: var(--text-secondary);
-    margin-top: -0.75rem;
-  }
-
-  .submit-btn {
-    width: 100%;
-    padding: 1rem;
-    border-radius: 100px;
-    border: none;
-    background: linear-gradient(135deg, #7c3aed, #a21caf);
-    color: #fff;
-    font-size: 1.1rem;
-    font-weight: 700;
-    cursor: pointer;
-    transition: opacity 0.15s, transform 0.15s, box-shadow 0.15s;
-    box-shadow: 0 0 30px #7c3aed50;
-  }
-
-  .submit-btn:hover:not(:disabled) {
-    transform: translateY(-2px);
-    box-shadow: 0 0 50px #a855f770;
-  }
-
-  .submit-btn:disabled {
-    opacity: 0.35;
-    cursor: not-allowed;
-    box-shadow: none;
-  }
-
-  /* ── Generating ── */
-  .generating {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 1.5rem;
-    text-align: center;
-    max-width: 480px;
-  }
-
+  /* ── Spinner ── */
   .gen-spinner {
     position: relative;
     width: 72px;
@@ -377,9 +267,7 @@
     animation: spin 1s linear infinite;
   }
 
-  @keyframes spin {
-    to { transform: rotate(360deg); }
-  }
+  @keyframes spin { to { transform: rotate(360deg); } }
 
   .spinner-icon {
     font-size: 1.5rem;
@@ -387,48 +275,143 @@
     animation: throb 2s ease-in-out infinite;
   }
 
-  .gen-title {
-    font-size: 1.5rem;
-    font-weight: 700;
-  }
-
-  .gen-sub {
+  /* ── Ghost button ── */
+  .ghost-btn {
+    padding: 0.5rem 1.5rem;
+    border-radius: 100px;
+    border: 1px solid var(--bg-border);
+    background: transparent;
     color: var(--text-secondary);
-    font-size: 0.95rem;
-    margin-top: -0.75rem;
-  }
-
-  .gen-prompt {
+    cursor: pointer;
     font-size: 0.85rem;
-    color: var(--text-secondary);
-    font-style: italic;
-    max-width: 400px;
-    line-height: 1.5;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .ghost-btn:hover {
+    border-color: var(--accent-glow);
+    color: var(--text-primary);
   }
 
-  /* ── Image result ── */
-  .result {
+  /* ── Writing layout ── */
+  .writing-layout {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 1.25rem;
+    gap: 1.1rem;
     width: 100%;
-    max-width: 560px;
+    max-width: 600px;
     text-align: center;
   }
 
-  .image-wrap {
-    width: 100%;
-    border-radius: 16px;
-    overflow: hidden;
-    border: 1px solid var(--bg-border);
-    box-shadow: 0 0 40px #7c3aed30;
+  .found-badge {
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent-glow);
+    background: #7c3aed18;
+    border: 1px solid #7c3aed40;
+    border-radius: 100px;
+    padding: 0.35rem 1rem;
   }
 
-  .generated-img {
+  .ref-image-wrap {
+    width: 100%;
+    border-radius: 14px;
+    overflow: hidden;
+    border: 1px solid var(--bg-border);
+    box-shadow: 0 0 40px #7c3aed20;
+  }
+
+  .ref-image-small {
+    max-width: 320px;
+  }
+
+  .ref-image {
     width: 100%;
     display: block;
     object-fit: cover;
+  }
+
+  .guess-instruction {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+  }
+
+  .error-msg {
+    font-size: 0.85rem;
+    color: var(--loss);
+    background: #ef444415;
+    border: 1px solid #ef444430;
+    border-radius: 8px;
+    padding: 0.5rem 1rem;
+    width: 100%;
+  }
+
+  .prompt-input {
+    width: 100%;
+    min-height: 140px;
+    padding: 1rem 1.25rem;
+    background: var(--bg-card);
+    border: 1px solid var(--bg-border);
+    border-radius: 14px;
+    color: var(--text-primary);
+    font-size: 1rem;
+    font-family: inherit;
+    line-height: 1.6;
+    resize: vertical;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    outline: none;
+  }
+  .prompt-input::placeholder { color: var(--text-secondary); opacity: 0.6; }
+  .prompt-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px #7c3aed25;
+  }
+
+  .char-count {
+    align-self: flex-end;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-top: -0.5rem;
+  }
+
+  .submit-btn {
+    width: 100%;
+    padding: 1rem;
+    border-radius: 100px;
+    border: none;
+    background: linear-gradient(135deg, #7c3aed, #a21caf);
+    color: #fff;
+    font-size: 1.1rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: opacity 0.15s, transform 0.15s, box-shadow 0.15s;
+    box-shadow: 0 0 30px #7c3aed50;
+  }
+  .submit-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 0 50px #a855f770;
+  }
+  .submit-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    box-shadow: none;
+  }
+
+  /* ── Submitted state ── */
+  .your-guess-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--text-secondary);
+  }
+
+  .your-guess-text {
+    font-size: 1rem;
+    color: var(--text-primary);
+    font-style: italic;
+    max-width: 420px;
+    line-height: 1.5;
   }
 
   .waiting-opponent {

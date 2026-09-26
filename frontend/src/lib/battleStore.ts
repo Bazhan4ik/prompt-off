@@ -7,12 +7,11 @@ export interface ImageData {
 
 export interface BattleData {
   roomId: string;
-  topic: string;
+  originalTopic: string;
   playerNumber: 1 | 2;
-  myImage: ImageData;
-  myPrompt: string;
-  opponentImage: ImageData;
-  opponentPrompt: string;
+  referenceImage: ImageData;
+  myGuess: string;
+  opponentGuess: string;
 }
 
 export const battleStore = writable<BattleData | null>(null);

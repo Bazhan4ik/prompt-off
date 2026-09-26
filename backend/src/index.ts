@@ -38,8 +38,8 @@ interface Judgment {
 interface RoomState {
   players: [string, string];
   topic: string;
-  prompts: Map<string, string>;
-  images: Map<string, ImageData>;
+  referenceImage?: ImageData;
+  guesses: Map<string, string>;
   judgment?: Judgment;
 }
 
@@ -97,32 +97,26 @@ async function generateImage(prompt: string): Promise<ImageData> {
   };
 }
 
-async function judgeImages(
-  topic: string,
-  p1: { prompt: string; image: ImageData },
-  p2: { prompt: string; image: ImageData },
+async function judgeGuesses(
+  originalTopic: string,
+  guess1: string,
+  guess2: string,
 ): Promise<Judgment> {
   const response = await ai.models.generateContent({
     model: 'gemini-3.8-flash',
     contents: [{
       role: 'user',
-      parts: [
-        {
-          text:
-            `You are judging an AI image prompt battle. The topic is: "${topic}"\n\n` +
-            `Player 1's prompt: "${p1.prompt}"\n` +
-            `Player 2's prompt: "${p2.prompt}"\n\n` +
-            `Here are their generated images — Player 1 first, Player 2 second:`,
-        },
-        { inlineData: { data: p1.image.base64, mimeType: p1.image.mimeType } },
-        { inlineData: { data: p2.image.base64, mimeType: p2.image.mimeType } },
-        {
-          text:
-            `Which image better fits the topic "${topic}"? Consider creativity, accuracy, and visual quality.\n\n` +
-            `Respond with valid JSON only (no markdown fences):\n` +
-            `{"winner": 1, "reason": "one sentence explanation"}`,
-        },
-      ],
+      parts: [{
+        text:
+          `You are judging a reverse prompt guessing game.\n\n` +
+          `An AI generated an image from this original prompt: "${originalTopic}"\n\n` +
+          `Two players tried to guess what the original prompt was:\n` +
+          `Player 1 guessed: "${guess1}"\n` +
+          `Player 2 guessed: "${guess2}"\n\n` +
+          `Which guess is closer to the original prompt? Consider semantic similarity, key concepts, mood, and detail accuracy.\n\n` +
+          `Respond with valid JSON only (no markdown fences):\n` +
+          `{"winner": 1, "reason": "one sentence explanation"}`,
+      }],
     }],
     config: { responseMimeType: 'application/json' },
   });
@@ -155,72 +149,68 @@ io.on('connection', (socket) => {
       const roomId = `battle:${p1.slice(0, 6)}:${p2.slice(0, 6)}`;
       const topic = TOPICS[Math.floor(Math.random() * TOPICS.length)];
 
-      const room: RoomState = {
-        players: [p1, p2],
-        topic,
-        prompts: new Map(),
-        images: new Map(),
-      };
+      const room: RoomState = { players: [p1, p2], topic, guesses: new Map() };
       rooms.set(roomId, room);
       socketToRoom.set(p1, roomId);
       socketToRoom.set(p2, roomId);
 
       io.sockets.sockets.get(p1)?.join(roomId);
       io.sockets.sockets.get(p2)?.join(roomId);
-      io.to(roomId).emit('match_found', { roomId, topic });
+
+      // Notify players immediately, then generate the reference image
+      io.to(roomId).emit('match_found', { roomId });
+
+      generateImage(topic)
+        .then((img) => {
+          room.referenceImage = img;
+          io.to(roomId).emit('reference_ready', { referenceImage: img });
+        })
+        .catch((err) => {
+          console.error('Reference image generation failed:', err);
+          io.to(roomId).emit('reference_error', { message: 'Failed to generate the challenge image.' });
+        });
     }
   });
 
-  socket.on('submit_prompt', async ({ roomId, prompt }: { roomId: string; prompt: string }) => {
+  socket.on('submit_guess', ({ roomId, guess }: { roomId: string; guess: string }) => {
     const room = rooms.get(roomId);
-    if (!room || room.images.has(socket.id)) return;
+    if (!room || room.guesses.has(socket.id)) return;
 
-    room.prompts.set(socket.id, prompt);
-    socket.emit('generating');
+    room.guesses.set(socket.id, guess);
+    socket.emit('guess_submitted');
 
-    try {
-      const image = await generateImage(prompt);
-      room.images.set(socket.id, image);
+    if (room.guesses.size === 2) {
+      const [p1, p2] = room.players;
+      const payload = {
+        roomId,
+        topic: room.topic,
+        players: room.players,
+        referenceImage: room.referenceImage,
+        guesses: {
+          [p1]: room.guesses.get(p1)!,
+          [p2]: room.guesses.get(p2)!,
+        },
+      };
+      io.to(roomId).emit('both_ready', payload);
 
-      socket.emit('image_ready', image);
-
-      if (room.images.size === 2) {
-        const [p1, p2] = room.players;
-        const payload = {
-          roomId,
-          topic: room.topic,
-          players: room.players,
-          images:  { [p1]: room.images.get(p1)!,  [p2]: room.images.get(p2)!  },
-          prompts: { [p1]: room.prompts.get(p1)!, [p2]: room.prompts.get(p2)! },
-        };
-        io.to(roomId).emit('both_ready', payload);
-
-        // kick off judging in the background
-        judgeImages(
-          room.topic,
-          { prompt: room.prompts.get(p1)!, image: room.images.get(p1)! },
-          { prompt: room.prompts.get(p2)!, image: room.images.get(p2)! },
-        ).then((judgment) => {
+      judgeGuesses(room.topic, room.guesses.get(p1)!, room.guesses.get(p2)!)
+        .then((judgment) => {
           room.judgment = judgment;
-          io.to(roomId).emit('judgment_result', judgment);
-        }).catch((err) => {
+          io.to(roomId).emit('judgment_result', { ...judgment, originalTopic: room.topic });
+        })
+        .catch((err) => {
           console.error('Judging failed:', err);
           io.to(roomId).emit('judgment_error', { message: 'Judging failed.' });
         });
-      }
-    } catch (err) {
-      console.error('Image generation failed:', err);
-      socket.emit('generation_error', { message: 'Image generation failed. Please try again.' });
     }
   });
 
-  // Judging page reconnects here to receive or replay the result
   socket.on('join_judging', ({ roomId }: { roomId: string }) => {
     socket.join(roomId);
     const room = rooms.get(roomId);
     if (!room) return;
     if (room.judgment) {
-      socket.emit('judgment_result', room.judgment);
+      socket.emit('judgment_result', { ...room.judgment, originalTopic: room.topic });
     }
   });
 

@@ -12,6 +12,8 @@ export interface BattleData {
   referenceImage: ImageData;
   myGuess: string;
   opponentGuess: string;
+  myName: string;
+  opponentName: string;
 }
 
 export const battleStore = writable<BattleData | null>(null);

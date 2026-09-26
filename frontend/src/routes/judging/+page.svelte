@@ -78,7 +78,7 @@
           class:loser={judgment && judgment.winner !== battle.playerNumber}
         >
           <div class="card-header">
-            <span class="you-badge">You</span>
+            <span class="you-badge">{battle.myName}</span>
             {#if judgment}
               <span class="result-tag" class:win-tag={iWon} class:loss-tag={!iWon}>
                 {iWon ? '🏆 Closer' : 'Further away'}
@@ -106,7 +106,7 @@
           class:loser={judgment && judgment.winner === battle.playerNumber}
         >
           <div class="card-header">
-            <span class="opp-badge">Opponent</span>
+            <span class="opp-badge">{battle.opponentName}</span>
             {#if judgment}
               <span class="result-tag" class:win-tag={!iWon} class:loss-tag={iWon}>
                 {!iWon ? '🏆 Closer' : 'Further away'}

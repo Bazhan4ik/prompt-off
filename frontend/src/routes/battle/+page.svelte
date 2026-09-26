@@ -6,12 +6,14 @@
   import { battleStore } from '$lib/battleStore';
   import { BACKEND_URL } from '$lib/backend';
 
-  type State = 'waiting' | 'loading_challenge' | 'writing' | 'submitted';
+  type State = 'naming' | 'waiting' | 'loading_challenge' | 'writing' | 'submitted';
 
   const TIME_LIMIT = 15;
 
-  let state: State = 'waiting';
+  let state: State = 'naming';
+  let playerName = '';
   let roomId = '';
+  let opponentName = '';
   let referenceImage: { base64: string; mimeType: string } | null = null;
   let guess = '';
   let errorMsg = '';
@@ -45,15 +47,19 @@
     }
   }
 
-  // collected on both_ready, stored before navigating
-  let pendingBattle: { topic: string; players: string[]; guesses: Record<string, string>; referenceImage: { base64: string; mimeType: string } } | null = null;
+  let pendingBattle: { topic: string; players: string[]; playerNames: Record<string, string>; guesses: Record<string, string>; referenceImage: { base64: string; mimeType: string } } | null = null;
 
-  onMount(() => {
+  function joinQueue() {
+    const name = playerName.trim();
+    if (!name) return;
+    state = 'waiting';
+
     socket = io(BACKEND_URL);
-    socket.emit('join_queue');
+    socket.emit('join_queue', { name });
 
-    socket.on('match_found', (data: { roomId: string }) => {
+    socket.on('match_found', (data: { roomId: string; opponentName: string }) => {
       roomId = data.roomId;
+      opponentName = data.opponentName;
       state = 'loading_challenge';
     });
 
@@ -86,6 +92,8 @@
         referenceImage: pendingBattle.referenceImage!,
         myGuess: pendingBattle.guesses[socket.id],
         opponentGuess: pendingBattle.guesses[opponentId],
+        myName: pendingBattle.playerNames[socket.id],
+        opponentName: pendingBattle.playerNames[opponentId],
       });
       goto('/judging');
     });
@@ -98,6 +106,10 @@
     socket.on('opponent_disconnected', () => {
       errorMsg = 'Your opponent disconnected.';
     });
+  }
+
+  onMount(() => {
+    // nothing — socket is created on name submit
   });
 
   onDestroy(() => {
@@ -115,8 +127,33 @@
 
 <div class="page">
 
+  <!-- ── Enter name ── -->
+  {#if state === 'naming'}
+    <div class="center-stack" in:fade={{ duration: 200 }}>
+      <p class="found-badge">⚔ Clash of Slops</p>
+      <h2 class="big-label">Enter Your Name</h2>
+      <p class="sub">Your opponent will see this</p>
+      <input
+        class="name-input"
+        type="text"
+        placeholder="Battle name…"
+        maxlength="32"
+        bind:value={playerName}
+        autofocus
+        on:keydown={(e) => e.key === 'Enter' && playerName.trim() && joinQueue()}
+      />
+      <button
+        class="submit-btn"
+        disabled={playerName.trim().length === 0}
+        on:click={joinQueue}
+      >
+        Find Opponent →
+      </button>
+      <button class="ghost-btn" on:click={() => goto('/')}>Cancel</button>
+    </div>
+
   <!-- ── Waiting for match ── -->
-  {#if state === 'waiting'}
+  {:else if state === 'waiting'}
     <div class="center-stack" in:fade={{ duration: 200 }}>
       <div class="radar">
         <div class="ring ring-1"></div>
@@ -125,7 +162,7 @@
         <div class="pulse"></div>
       </div>
       <h2 class="big-label">Finding your opponent…</h2>
-      <p class="sub">Get ready to guess</p>
+      <p class="sub">Playing as <strong>{playerName}</strong></p>
       <button class="ghost-btn" on:click={() => goto('/')}>Cancel</button>
     </div>
 
@@ -137,6 +174,7 @@
         <span class="spinner-icon">✦</span>
       </div>
       <h2 class="big-label">Opponent found!</h2>
+      <p class="sub">You're up against <strong class="opp-highlight">{opponentName}</strong></p>
       <p class="sub">Generating your challenge image…</p>
 
       {#if errorMsg}
@@ -147,7 +185,7 @@
   <!-- ── Write your guess ── -->
   {:else if state === 'writing'}
     <div class="writing-layout" in:fade={{ duration: 300 }}>
-      <p class="found-badge">⚔ What prompt made this?</p>
+      <p class="found-badge">⚔ vs <span class="opp-highlight">{opponentName}</span></p>
 
       {#if referenceImage}
         <div class="ref-image-wrap">
@@ -224,7 +262,7 @@
       <p class="your-guess-text">"{guess}"</p>
       <div class="waiting-opponent">
         <div class="mini-pulse"></div>
-        <span>Waiting for opponent's guess…</span>
+        <span>Waiting for <strong>{opponentName}</strong>'s guess…</span>
       </div>
       {#if errorMsg}
         <p class="error-msg">{errorMsg}</p>
@@ -264,6 +302,30 @@
     font-size: 0.95rem;
     color: var(--text-secondary);
     margin-top: -0.5rem;
+  }
+
+  .opp-highlight {
+    color: var(--accent-glow);
+  }
+
+  /* ── Name input ── */
+  .name-input {
+    width: 100%;
+    padding: 0.9rem 1.25rem;
+    background: var(--bg-card);
+    border: 1px solid var(--bg-border);
+    border-radius: 14px;
+    color: var(--text-primary);
+    font-size: 1.1rem;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    text-align: center;
+  }
+  .name-input::placeholder { color: var(--text-secondary); opacity: 0.6; }
+  .name-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px #4d8f0025;
   }
 
   /* ── Radar ── */

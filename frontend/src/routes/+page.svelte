@@ -62,23 +62,6 @@
         <span class="btn-glow"></span>
         <span class="btn-text">⚔ Enter Battle</span>
       </a>
-
-      <div class="stats-row">
-        <div class="stat">
-          <span class="stat-num">1,284</span>
-          <span class="stat-label">Battles Fought</span>
-        </div>
-        <div class="stat-divider"></div>
-        <div class="stat">
-          <span class="stat-num">312</span>
-          <span class="stat-label">Active Players</span>
-        </div>
-        <div class="stat-divider"></div>
-        <div class="stat">
-          <span class="stat-num">∞</span>
-          <span class="stat-label">Prompts Generated</span>
-        </div>
-      </div>
     </div>
   </section>
 
@@ -268,39 +251,6 @@
     z-index: 1;
   }
 
-  /* ── Stats row ── */
-  .stats-row {
-    display: flex;
-    align-items: center;
-    gap: 1.5rem;
-    margin-top: 0.5rem;
-  }
-
-  .stat {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.15rem;
-  }
-
-  .stat-num {
-    font-size: 1.4rem;
-    font-weight: 700;
-    color: var(--text-primary);
-  }
-
-  .stat-label {
-    font-size: 0.7rem;
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    color: var(--text-secondary);
-  }
-
-  .stat-divider {
-    width: 1px;
-    height: 2rem;
-    background: var(--bg-border);
-  }
 
   /* ── Leaderboard Section ── */
   .leaderboard-section {

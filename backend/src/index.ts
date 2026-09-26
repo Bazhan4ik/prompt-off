@@ -180,10 +180,13 @@ Respond with JSON only: {"prompt": "..."}`,
  
   // trickType comes from our own pick, so it's always one of the six labels.
   return { topic: parsed.prompt as string, trickType: trick.name };
-}async function generateImage(prompt: string): Promise<ImageData> {
+}
+
+async function generateImage(prompt: string): Promise<ImageData> {
+  const fastPrompt = `Simple flat cartoon illustration, minimal detail, bold outlines, limited color palette: ${prompt}`;
   const response = await ai.models.generateContent({
     model: 'gemini-2.5-flash-image',
-    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    contents: [{ role: 'user', parts: [{ text: fastPrompt }] }],
     config: { responseModalities: ['IMAGE'] },
   });
 

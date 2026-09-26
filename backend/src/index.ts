@@ -1,7 +1,13 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
 
 const app = express();
+const httpServer = createServer(app);
+const io = new Server(httpServer, {
+  cors: { origin: '*' }
+});
 const PORT = 3001;
 
 app.use(cors());
@@ -28,6 +34,26 @@ const leaderboard: LeaderboardEntry[] = [
   { rank: 10, username: 'QuantumQuill',   wins: 14, losses: 35, score:  890 },
 ];
 
+const TOPICS = [
+  'a cyberpunk samurai at midnight',
+  'an underwater city at golden hour',
+  'a dragon made of storm clouds',
+  'a forest full of neon mushrooms',
+  'a lonely robot in a flower field',
+  'a wizard city floating in the sky',
+  'a cat riding a motorcycle through space',
+  'an ancient library inside a volcano',
+  'a ghost town on the surface of Mars',
+  'a giant whale swimming through the clouds',
+];
+
+const queue: string[] = [];
+
+interface MatchFoundPayload {
+  roomId: string;
+  topic: string;
+}
+
 app.get('/api/leaderboard', (_req: Request, res: Response) => {
   res.json(leaderboard);
 });
@@ -36,6 +62,30 @@ app.get('/api/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok' });
 });
 
-app.listen(PORT, () => {
+io.on('connection', (socket) => {
+  socket.on('join_queue', () => {
+    if (queue.includes(socket.id)) return;
+    queue.push(socket.id);
+
+    if (queue.length >= 2) {
+      const [p1, p2] = queue.splice(0, 2);
+      const roomId = `battle:${p1}:${p2}`;
+      const topic = TOPICS[Math.floor(Math.random() * TOPICS.length)];
+
+      const payload: MatchFoundPayload = { roomId, topic };
+
+      io.sockets.sockets.get(p1)?.join(roomId);
+      io.sockets.sockets.get(p2)?.join(roomId);
+      io.to(roomId).emit('match_found', payload);
+    }
+  });
+
+  socket.on('disconnect', () => {
+    const idx = queue.indexOf(socket.id);
+    if (idx !== -1) queue.splice(idx, 1);
+  });
+});
+
+httpServer.listen(PORT, () => {
   console.log(`Backend running on http://localhost:${PORT}`);
 });

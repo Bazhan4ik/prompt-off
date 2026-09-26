@@ -67,67 +67,120 @@ function buildLeaderboard() {
     .map((s, i) => ({ rank: i + 1, username: s.name, wins: s.wins, losses: s.losses, score: s.score }));
 }
 
+const TRICKS = [
+  {
+    name: 'misleading scale',
+    how: 'Make something huge look tiny or something tiny look huge, so players misjudge what they are looking at.',
+    example: 'A tiny lighthouse made of sugar cubes on a kitchen counter',
+  },
+  {
+    name: 'abstract concept',
+    how: 'Show a feeling or everyday situation as a physical scene.',
+    example: 'The feeling of forgetting why you walked into a room',
+  },
+  {
+    name: 'reversal',
+    how: 'Flip the normal roles of two things.',
+    example: 'A goldfish walking a cat on a leash',
+  },
+  {
+    name: 'style disguise',
+    how: 'Draw an ordinary modern scene in an unexpected art style or material.',
+    example: 'A crayon drawing of a traffic jam',
+  },
+  {
+    name: 'hidden detail',
+    how: 'A normal scene with one small odd detail that defines the prompt.',
+    example: 'A birthday party where one candle is already blown out',
+  },
+  {
+    name: 'idiom',
+    how: 'Take a common English saying and show it word for word.',
+    example: 'A literal elephant in the corner of an office meeting',
+  },
+] as const;
+ 
+// Plain, everyday words. Add to these freely; the bigger the pools, the more variety.
+const SUBJECTS = [
+  'dog', 'cat', 'grandma', 'toddler', 'penguin', 'cow', 'snowman', 'robot', 'pizza',
+  'toaster', 'bicycle', 'goldfish', 'chicken', 'firefighter', 'banana', 'shoe', 'cactus',
+  'school bus', 'teddy bear', 'frog', 'giraffe', 'mailman', 'vacuum cleaner', 'duck',
+  'birthday cake', 'umbrella', 'pirate', 'hamster', 'soccer ball', 'lamp', 'horse',
+  'chef', 'rubber duck', 'octopus', 'traffic cone', 'sandwich', 'bee', 'wizard',
+  'shopping cart', 'sloth', 'dentist', 'watermelon', 'owl', 'bus driver', 'sock',
+];
+ 
+const SETTINGS = [
+  'a kitchen', 'a beach', 'a supermarket', 'a classroom', 'a bathtub', 'a parking lot',
+  'a forest', 'a subway car', 'a laundromat', 'a farm', 'a hospital waiting room',
+  'the moon', 'a bowling alley', 'a backyard', 'a library', 'a gas station', 'a desert',
+  'a swimming pool', 'an elevator', 'a snowy street', 'a playground', 'a car wash',
+  'a wedding', 'a dentist office', 'a camping tent', 'a rooftop', 'a bakery',
+];
+ 
+const STYLES = [
+  'crayon drawing', 'LEGO', 'claymation', 'pixel art', 'watercolor', 'comic strip',
+  'cave painting', 'knitted wool', 'cardboard cutout', 'chalk on a sidewalk',
+  'stained glass', 'old black-and-white photo', 'cake frosting', 'origami',
+];
+ 
+const pick = <T,>(arr: readonly T[]): T => arr[Math.floor(Math.random() * arr.length)];
+ 
+// Remember recent prompts so the model doesn't repeat itself.
+// (Per-server memory; move to Redis/DB if you run multiple instances.)
+const recentPrompts: string[] = [];
+const RECENT_LIMIT = 15;
+ 
 async function generateTopic(): Promise<{ topic: string; trickType: string }> {
+  const trick = pick(TRICKS);
+  const subject = pick(SUBJECTS);
+  const setting = pick(SETTINGS);
+  const styleLine = trick.name === 'style disguise' ? `\n- Art style: ${pick(STYLES)}` : '';
+ 
+  const avoid = recentPrompts.length
+    ? `\nDo not repeat ideas from these recent prompts:\n${recentPrompts.map(p => `- ${p}`).join('\n')}\n`
+    : '';
+ 
   const response = await ai.models.generateContent({
     model: 'gemini-3.8-flash',
     contents: [{
       role: 'user',
       parts: [{
-        text: `You are designing prompts for a competitive AI image-guessing game. Players see a generated image and must guess the exact prompt that made it. Your goal is to make that as hard as possible while staying fair — every key element must actually be visible.
-
-Pick ONE trick category and craft a prompt using it:
-
-MISLEADING SCALE — make something huge look tiny or vice versa, or set an outdoor scene indoors.
-Example: "A tiny lighthouse made of sugar cubes on a kitchen counter during a thunderstorm, shot from ground level"
-Why it works: players guess "lighthouse in a storm" and miss it's miniature and indoors.
-Example: "Macro photograph of frost on a car windshield that looks like a pine forest"
-Why it works: the image reads as a forest; the real subject is hidden.
-
-ABSTRACT CONCEPT RENDERED LITERALLY — depict a feeling, idea, or phrase as a physical scene.
-Example: "The feeling of forgetting why you walked into a room"
-Example: "Nostalgia for a place you've never been, as a vintage postcard"
-Why it works: players describe what they see, not the concept behind it.
-
-REVERSAL OR SWAP — flip the normal relationship between two things.
-Example: "A goldfish walking a cat on a leash through a park"
-Example: "An astronaut in the desert, looking up at Earth in the sky"
-Why it works: players mentally correct the image back to the normal version.
-
-STYLE DISGUISED AS SUBJECT — the medium or art style is the trick, not the content.
-Example: "A Renaissance oil painting of a man waiting for his microwave to finish"
-Example: "A medieval tapestry showing a traffic jam"
-Why it works: players describe the solemn scene and miss the mundane punchline or anachronism.
-
-EASY-TO-MISS DETAIL — the whole point is one or two small things most players overlook.
-Example: "A crowded train platform where everyone is holding an umbrella except one child, and it isn't raining"
-Example: "A birthday party where one candle on the cake is already blown out"
-Why it works: players get the scene right but miss the specific detail that defines the prompt.
-
-IDIOM OR WORDPLAY RENDERED LITERALLY — take a phrase or idiom and depict it word-for-word.
-Example: "A literal elephant sitting in the corner of a quiet office meeting"
-Example: "A cat made entirely of spaghetti, sitting in a colander"
-Why it works: guessable only if the player makes the exact connection; impossible if they don't.
-
-Additional rules:
-- Use specific, niche, or technical vocabulary where possible (art movements, architectural terms, obscure species, scientific jargon)
-- Every trick element must be clearly visible in the image — don't rely on details an image model might drop
-- 8 to 18 words
-- Do not reuse the examples above
-
-Respond with valid JSON only (no markdown):
-{"prompt": "the image prompt here", "trickType": "one of: misleading scale, abstract concept, reversal, style disguise, hidden detail, idiom"}`,
+        text: `Write one image prompt for a guessing game. Players see the image and try to guess the prompt, so it should be tricky but fair.
+ 
+Trick: ${trick.name} - ${trick.how}
+Example of this trick: "${trick.example}"
+ 
+Build it around:
+- Subject: ${subject}
+- Setting: ${setting}${styleLine}
+(You can change the setting if it makes the trick work better, but keep the subject.)
+ 
+Rules:
+- Use simple, everyday words a 12-year-old knows. No art history, science or fancy terms.
+- 8 to 15 words.
+- Every important part must be clearly visible in the image.
+- Don't copy the example.
+${avoid}
+Respond with JSON only: {"prompt": "..."}`,
       }],
     }],
-    config: { responseMimeType: 'application/json' },
+    config: {
+      responseMimeType: 'application/json',
+      temperature: 1.2, // more variety in wording
+    },
   });
-
+ 
   const text = response.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
   const parsed = JSON.parse(text);
   if (!parsed.prompt) throw new Error('No topic returned from Gemini');
-  return { topic: parsed.prompt as string, trickType: parsed.trickType as string };
-}
-
-async function generateImage(prompt: string): Promise<ImageData> {
+ 
+  recentPrompts.push(parsed.prompt);
+  if (recentPrompts.length > RECENT_LIMIT) recentPrompts.shift();
+ 
+  // trickType comes from our own pick, so it's always one of the six labels.
+  return { topic: parsed.prompt as string, trickType: trick.name };
+}async function generateImage(prompt: string): Promise<ImageData> {
   const response = await ai.models.generateContent({
     model: 'gemini-2.5-flash-image',
     contents: [{ role: 'user', parts: [{ text: prompt }] }],

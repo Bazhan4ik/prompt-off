@@ -8,12 +8,42 @@
 
   type State = 'waiting' | 'loading_challenge' | 'writing' | 'submitted';
 
+  const TIME_LIMIT = 15;
+
   let state: State = 'waiting';
   let roomId = '';
   let referenceImage: { base64: string; mimeType: string } | null = null;
   let guess = '';
   let errorMsg = '';
   let socket: ReturnType<typeof io>;
+
+  let timeLeft = TIME_LIMIT;
+  let timerInterval: ReturnType<typeof setInterval> | null = null;
+
+  // SVG ring math
+  const RADIUS = 20;
+  const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
+  $: ringOffset = CIRCUMFERENCE * (1 - timeLeft / TIME_LIMIT);
+  $: timerColor = timeLeft > 7 ? '#22c55e' : timeLeft > 3 ? '#f5c842' : '#ef4444';
+  $: timerUrgent = timeLeft <= 3;
+
+  function startTimer() {
+    timeLeft = TIME_LIMIT;
+    timerInterval = setInterval(() => {
+      timeLeft -= 1;
+      if (timeLeft <= 0) {
+        stopTimer();
+        submitGuess();
+      }
+    }, 1000);
+  }
+
+  function stopTimer() {
+    if (timerInterval !== null) {
+      clearInterval(timerInterval);
+      timerInterval = null;
+    }
+  }
 
   // collected on both_ready, stored before navigating
   let pendingBattle: { topic: string; players: string[]; guesses: Record<string, string>; referenceImage: { base64: string; mimeType: string } } | null = null;
@@ -30,6 +60,7 @@
     socket.on('reference_ready', (data: { referenceImage: { base64: string; mimeType: string } }) => {
       referenceImage = data.referenceImage;
       state = 'writing';
+      startTimer();
     });
 
     socket.on('reference_error', (data: { message: string }) => {
@@ -70,12 +101,15 @@
   });
 
   onDestroy(() => {
+    stopTimer();
     socket?.disconnect();
   });
 
   function submitGuess() {
-    if (!guess.trim() || !roomId) return;
-    socket.emit('submit_guess', { roomId, guess });
+    if (!roomId) return;
+    stopTimer();
+    const finalGuess = guess.trim() || '(no guess)';
+    socket.emit('submit_guess', { roomId, guess: finalGuess });
   }
 </script>
 
@@ -125,7 +159,32 @@
         </div>
       {/if}
 
-      <p class="guess-instruction">Write the prompt you think generated this image</p>
+      <div class="timer-row">
+        <svg class="timer-ring" viewBox="0 0 48 48" width="48" height="48">
+          <circle cx="24" cy="24" r={RADIUS} fill="none" stroke="#1e1e35" stroke-width="4" />
+          <circle
+            cx="24" cy="24" r={RADIUS}
+            fill="none"
+            stroke={timerColor}
+            stroke-width="4"
+            stroke-linecap="round"
+            stroke-dasharray={CIRCUMFERENCE}
+            stroke-dashoffset={ringOffset}
+            transform="rotate(-90 24 24)"
+            style="transition: stroke-dashoffset 0.9s linear, stroke 0.3s"
+          />
+          <text
+            x="24" y="24"
+            text-anchor="middle"
+            dominant-baseline="central"
+            fill={timerColor}
+            font-size="13"
+            font-weight="700"
+            class:urgent={timerUrgent}
+          >{timeLeft}</text>
+        </svg>
+        <p class="guess-instruction">Write the prompt you think generated this image</p>
+      </div>
 
       {#if errorMsg}
         <p class="error-msg">{errorMsg}</p>
@@ -142,7 +201,7 @@
 
       <button
         class="submit-btn"
-        disabled={guess.trim().length === 0}
+        disabled={guess.trim().length === 0 || timeLeft <= 0}
         on:click={submitGuess}
       >
         Submit Guess
@@ -330,6 +389,26 @@
     width: 100%;
     display: block;
     object-fit: cover;
+  }
+
+  .timer-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    width: 100%;
+  }
+
+  .timer-ring {
+    flex-shrink: 0;
+  }
+
+  :global(.urgent) {
+    animation: pulse-text 0.5s ease-in-out infinite alternate;
+  }
+
+  @keyframes pulse-text {
+    from { opacity: 1; }
+    to   { opacity: 0.4; }
   }
 
   .guess-instruction {

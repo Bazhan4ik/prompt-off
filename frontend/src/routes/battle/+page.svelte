@@ -1,8 +1,9 @@
-<script>
+<script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { fade } from 'svelte/transition';
   import { io } from 'socket.io-client';
   import { goto } from '$app/navigation';
+  import { battleStore } from '$lib/battleStore';
 
   /** @type {'waiting' | 'matched' | 'submitting' | 'image_ready'} */
   let state = 'waiting';
@@ -11,7 +12,6 @@
   let prompt = '';
   let imageBase64 = '';
   let imageMime = 'image/jpeg';
-  let opponentReady = false;
   let errorMsg = '';
   let socket;
 
@@ -35,13 +35,24 @@
       state = 'image_ready';
     });
 
-    socket.on('both_ready', () => {
-      goto(`/judging?room=${roomId}`);
+    socket.on('both_ready', (data) => {
+      const myIndex = data.players.indexOf(socket.id);
+      const opponentId = data.players[myIndex === 0 ? 1 : 0];
+      battleStore.set({
+        roomId: data.roomId,
+        topic: data.topic,
+        playerNumber: (myIndex + 1) as 1 | 2,
+        myImage: data.images[socket.id],
+        myPrompt: data.prompts[socket.id],
+        opponentImage: data.images[opponentId],
+        opponentPrompt: data.prompts[opponentId],
+      });
+      goto('/judging');
     });
 
     socket.on('generation_error', (data) => {
       errorMsg = data.message;
-      state = 'matched'; // let them retry
+      state = 'matched';
     });
 
     socket.on('opponent_disconnected', () => {

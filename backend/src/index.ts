@@ -25,10 +25,22 @@ interface LeaderboardEntry {
   score: number;
 }
 
+interface ImageData {
+  base64: string;
+  mimeType: string;
+}
+
+interface Judgment {
+  winner: 1 | 2;
+  reason: string;
+}
+
 interface RoomState {
   players: [string, string];
   topic: string;
-  images: Map<string, { base64: string; mimeType: string }>;
+  prompts: Map<string, string>;
+  images: Map<string, ImageData>;
+  judgment?: Judgment;
 }
 
 // ── Data ─────────────────────────────────────────────────────────────────────
@@ -67,7 +79,7 @@ const socketToRoom = new Map<string, string>();
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-async function generateImage(prompt: string): Promise<{ base64: string; mimeType: string }> {
+async function generateImage(prompt: string): Promise<ImageData> {
   const response = await ai.models.generateContent({
     model: 'gemini-2.5-flash-image',
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
@@ -83,6 +95,41 @@ async function generateImage(prompt: string): Promise<{ base64: string; mimeType
     base64: imagePart.inlineData.data,
     mimeType: imagePart.inlineData.mimeType ?? 'image/jpeg',
   };
+}
+
+async function judgeImages(
+  topic: string,
+  p1: { prompt: string; image: ImageData },
+  p2: { prompt: string; image: ImageData },
+): Promise<Judgment> {
+  const response = await ai.models.generateContent({
+    model: 'gemini-2.5-flash',
+    contents: [{
+      role: 'user',
+      parts: [
+        {
+          text:
+            `You are judging an AI image prompt battle. The topic is: "${topic}"\n\n` +
+            `Player 1's prompt: "${p1.prompt}"\n` +
+            `Player 2's prompt: "${p2.prompt}"\n\n` +
+            `Here are their generated images — Player 1 first, Player 2 second:`,
+        },
+        { inlineData: { data: p1.image.base64, mimeType: p1.image.mimeType } },
+        { inlineData: { data: p2.image.base64, mimeType: p2.image.mimeType } },
+        {
+          text:
+            `Which image better fits the topic "${topic}"? Consider creativity, accuracy, and visual quality.\n\n` +
+            `Respond with valid JSON only (no markdown fences):\n` +
+            `{"winner": 1, "reason": "one sentence explanation"}`,
+        },
+      ],
+    }],
+    config: { responseMimeType: 'application/json' },
+  });
+
+  const text = response.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+  const parsed = JSON.parse(text);
+  return { winner: parsed.winner as 1 | 2, reason: parsed.reason as string };
 }
 
 // ── HTTP routes ───────────────────────────────────────────────────────────────
@@ -108,7 +155,12 @@ io.on('connection', (socket) => {
       const roomId = `battle:${p1.slice(0, 6)}:${p2.slice(0, 6)}`;
       const topic = TOPICS[Math.floor(Math.random() * TOPICS.length)];
 
-      const room: RoomState = { players: [p1, p2], topic, images: new Map() };
+      const room: RoomState = {
+        players: [p1, p2],
+        topic,
+        prompts: new Map(),
+        images: new Map(),
+      };
       rooms.set(roomId, room);
       socketToRoom.set(p1, roomId);
       socketToRoom.set(p2, roomId);
@@ -123,6 +175,7 @@ io.on('connection', (socket) => {
     const room = rooms.get(roomId);
     if (!room || room.images.has(socket.id)) return;
 
+    room.prompts.set(socket.id, prompt);
     socket.emit('generating');
 
     try {
@@ -135,16 +188,39 @@ io.on('connection', (socket) => {
         const [p1, p2] = room.players;
         const payload = {
           roomId,
-          images: {
-            [p1]: room.images.get(p1)!,
-            [p2]: room.images.get(p2)!,
-          },
+          topic: room.topic,
+          players: room.players,
+          images:  { [p1]: room.images.get(p1)!,  [p2]: room.images.get(p2)!  },
+          prompts: { [p1]: room.prompts.get(p1)!, [p2]: room.prompts.get(p2)! },
         };
         io.to(roomId).emit('both_ready', payload);
+
+        // kick off judging in the background
+        judgeImages(
+          room.topic,
+          { prompt: room.prompts.get(p1)!, image: room.images.get(p1)! },
+          { prompt: room.prompts.get(p2)!, image: room.images.get(p2)! },
+        ).then((judgment) => {
+          room.judgment = judgment;
+          io.to(roomId).emit('judgment_result', judgment);
+        }).catch((err) => {
+          console.error('Judging failed:', err);
+          io.to(roomId).emit('judgment_error', { message: 'Judging failed.' });
+        });
       }
     } catch (err) {
       console.error('Image generation failed:', err);
       socket.emit('generation_error', { message: 'Image generation failed. Please try again.' });
+    }
+  });
+
+  // Judging page reconnects here to receive or replay the result
+  socket.on('join_judging', ({ roomId }: { roomId: string }) => {
+    socket.join(roomId);
+    const room = rooms.get(roomId);
+    if (!room) return;
+    if (room.judgment) {
+      socket.emit('judgment_result', room.judgment);
     }
   });
 
@@ -155,7 +231,6 @@ io.on('connection', (socket) => {
     const roomId = socketToRoom.get(socket.id);
     if (roomId) {
       socketToRoom.delete(socket.id);
-      // notify opponent if battle was in progress
       socket.to(roomId).emit('opponent_disconnected');
     }
   });

@@ -38,6 +38,7 @@ interface Judgment {
 interface RoomState {
   players: [string, string];
   topic: string;
+  trickType: string;
   referenceImage?: ImageData;
   guesses: Map<string, string>;
   judgment?: Judgment;
@@ -58,18 +59,6 @@ const leaderboard: LeaderboardEntry[] = [
   { rank: 10, username: 'QuantumQuill',   wins: 14, losses: 35, score:  890 },
 ];
 
-const TOPICS = [
-  'a cyberpunk samurai at midnight',
-  'an underwater city at golden hour',
-  'a dragon made of storm clouds',
-  'a forest full of neon mushrooms',
-  'a lonely robot in a flower field',
-  'a wizard city floating in the sky',
-  'a cat riding a motorcycle through space',
-  'an ancient library inside a volcano',
-  'a ghost town on the surface of Mars',
-  'a giant whale swimming through the clouds',
-];
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
@@ -78,6 +67,66 @@ const rooms = new Map<string, RoomState>();
 const socketToRoom = new Map<string, string>();
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+async function generateTopic(): Promise<{ topic: string; trickType: string }> {
+  const response = await ai.models.generateContent({
+    model: 'gemini-3.8-flash',
+    contents: [{
+      role: 'user',
+      parts: [{
+        text: `You are designing prompts for a competitive AI image-guessing game. Players see a generated image and must guess the exact prompt that made it. Your goal is to make that as hard as possible while staying fair — every key element must actually be visible.
+
+Pick ONE trick category and craft a prompt using it:
+
+MISLEADING SCALE — make something huge look tiny or vice versa, or set an outdoor scene indoors.
+Example: "A tiny lighthouse made of sugar cubes on a kitchen counter during a thunderstorm, shot from ground level"
+Why it works: players guess "lighthouse in a storm" and miss it's miniature and indoors.
+Example: "Macro photograph of frost on a car windshield that looks like a pine forest"
+Why it works: the image reads as a forest; the real subject is hidden.
+
+ABSTRACT CONCEPT RENDERED LITERALLY — depict a feeling, idea, or phrase as a physical scene.
+Example: "The feeling of forgetting why you walked into a room"
+Example: "Nostalgia for a place you've never been, as a vintage postcard"
+Why it works: players describe what they see, not the concept behind it.
+
+REVERSAL OR SWAP — flip the normal relationship between two things.
+Example: "A goldfish walking a cat on a leash through a park"
+Example: "An astronaut in the desert, looking up at Earth in the sky"
+Why it works: players mentally correct the image back to the normal version.
+
+STYLE DISGUISED AS SUBJECT — the medium or art style is the trick, not the content.
+Example: "A Renaissance oil painting of a man waiting for his microwave to finish"
+Example: "A medieval tapestry showing a traffic jam"
+Why it works: players describe the solemn scene and miss the mundane punchline or anachronism.
+
+EASY-TO-MISS DETAIL — the whole point is one or two small things most players overlook.
+Example: "A crowded train platform where everyone is holding an umbrella except one child, and it isn't raining"
+Example: "A birthday party where one candle on the cake is already blown out"
+Why it works: players get the scene right but miss the specific detail that defines the prompt.
+
+IDIOM OR WORDPLAY RENDERED LITERALLY — take a phrase or idiom and depict it word-for-word.
+Example: "A literal elephant sitting in the corner of a quiet office meeting"
+Example: "A cat made entirely of spaghetti, sitting in a colander"
+Why it works: guessable only if the player makes the exact connection; impossible if they don't.
+
+Additional rules:
+- Use specific, niche, or technical vocabulary where possible (art movements, architectural terms, obscure species, scientific jargon)
+- Every trick element must be clearly visible in the image — don't rely on details an image model might drop
+- 8 to 18 words
+- Do not reuse the examples above
+
+Respond with valid JSON only (no markdown):
+{"prompt": "the image prompt here", "trickType": "one of: misleading scale, abstract concept, reversal, style disguise, hidden detail, idiom"}`,
+      }],
+    }],
+    config: { responseMimeType: 'application/json' },
+  });
+
+  const text = response.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+  const parsed = JSON.parse(text);
+  if (!parsed.prompt) throw new Error('No topic returned from Gemini');
+  return { topic: parsed.prompt as string, trickType: parsed.trickType as string };
+}
 
 async function generateImage(prompt: string): Promise<ImageData> {
   const response = await ai.models.generateContent({
@@ -108,14 +157,16 @@ async function judgeGuesses(
       role: 'user',
       parts: [{
         text:
-          `You are judging a reverse prompt guessing game.\n\n` +
-          `An AI generated an image from this original prompt: "${originalTopic}"\n\n` +
-          `Two players tried to guess what the original prompt was:\n` +
+          `You are judging a reverse prompt guessing game. Score each guess on three dimensions:\n` +
+          `- Subject (40 pts): did they identify the main subject correctly?\n` +
+          `- Twist (40 pts): did they catch the trick — the scale, reversal, hidden detail, style, concept, or idiom?\n` +
+          `- Style/detail (20 pts): did they capture specific wording, medium, or compositional details?\n\n` +
+          `Original prompt: "${originalTopic}"\n` +
           `Player 1 guessed: "${guess1}"\n` +
           `Player 2 guessed: "${guess2}"\n\n` +
-          `Which guess is closer to the original prompt? Consider semantic similarity, key concepts, mood, and detail accuracy.\n\n` +
+          `Pick the winner based on total score. In case of a tie, the player who caught the twist wins.\n\n` +
           `Respond with valid JSON only (no markdown fences):\n` +
-          `{"winner": 1, "reason": "one sentence explanation"}`,
+          `{"winner": 1, "reason": "one sentence explanation that names what the twist was"}`,
       }],
     }],
     config: { responseMimeType: 'application/json' },
@@ -147,9 +198,8 @@ io.on('connection', (socket) => {
     if (queue.length >= 2) {
       const [p1, p2] = queue.splice(0, 2);
       const roomId = `battle:${p1.slice(0, 6)}:${p2.slice(0, 6)}`;
-      const topic = TOPICS[Math.floor(Math.random() * TOPICS.length)];
 
-      const room: RoomState = { players: [p1, p2], topic, guesses: new Map() };
+      const room: RoomState = { players: [p1, p2], topic: '', trickType: '', guesses: new Map() };
       rooms.set(roomId, room);
       socketToRoom.set(p1, roomId);
       socketToRoom.set(p2, roomId);
@@ -157,16 +207,21 @@ io.on('connection', (socket) => {
       io.sockets.sockets.get(p1)?.join(roomId);
       io.sockets.sockets.get(p2)?.join(roomId);
 
-      // Notify players immediately, then generate the reference image
+      // Notify players immediately, then generate topic + reference image
       io.to(roomId).emit('match_found', { roomId });
 
-      generateImage(topic)
+      generateTopic()
+        .then(({ topic, trickType }) => {
+          room.topic = topic;
+          room.trickType = trickType;
+          return generateImage(topic);
+        })
         .then((img) => {
           room.referenceImage = img;
           io.to(roomId).emit('reference_ready', { referenceImage: img });
         })
         .catch((err) => {
-          console.error('Reference image generation failed:', err);
+          console.error('Challenge generation failed:', err);
           io.to(roomId).emit('reference_error', { message: 'Failed to generate the challenge image.' });
         });
     }
@@ -196,7 +251,7 @@ io.on('connection', (socket) => {
       judgeGuesses(room.topic, room.guesses.get(p1)!, room.guesses.get(p2)!)
         .then((judgment) => {
           room.judgment = judgment;
-          io.to(roomId).emit('judgment_result', { ...judgment, originalTopic: room.topic });
+          io.to(roomId).emit('judgment_result', { ...judgment, originalTopic: room.topic, trickType: room.trickType });
         })
         .catch((err) => {
           console.error('Judging failed:', err);
@@ -210,7 +265,7 @@ io.on('connection', (socket) => {
     const room = rooms.get(roomId);
     if (!room) return;
     if (room.judgment) {
-      socket.emit('judgment_result', { ...room.judgment, originalTopic: room.topic });
+      socket.emit('judgment_result', { ...room.judgment, originalTopic: room.topic, trickType: room.trickType });
     }
   });
 

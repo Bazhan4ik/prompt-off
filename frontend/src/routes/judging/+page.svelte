@@ -12,7 +12,7 @@
   type JudgeState = 'judging' | 'done' | 'error' | 'missing';
   let judgeState: JudgeState = battle ? 'judging' : 'missing';
 
-  let judgment: { winner: 1 | 2; reason: string; originalTopic: string } | null = null;
+  let judgment: { winner: 1 | 2; reason: string; originalTopic: string; trickType: string } | null = null;
   let errorMsg = '';
   let socket: ReturnType<typeof io>;
 
@@ -63,6 +63,7 @@
 
         {#if judgeState === 'done' && judgment}
           <div class="original-topic" in:fade={{ duration: 400 }}>
+            <span class="trick-tag">The trick: {judgment.trickType}</span>
             <span class="original-label">Original prompt</span>
             <span class="original-text">"{judgment.originalTopic}"</span>
           </div>
@@ -203,6 +204,19 @@
     border-radius: 12px;
     text-align: center;
     width: 100%;
+  }
+
+  .trick-tag {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent-glow);
+    background: #7c3aed18;
+    border: 1px solid #7c3aed40;
+    border-radius: 100px;
+    padding: 0.2rem 0.75rem;
+    margin-bottom: 0.25rem;
   }
 
   .original-label {

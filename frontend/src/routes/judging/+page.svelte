@@ -184,7 +184,7 @@
     border-radius: 16px;
     overflow: hidden;
     border: 1px solid var(--bg-border);
-    box-shadow: 0 0 50px #7c3aed25;
+    box-shadow: 0 0 50px #4d8f0025;
   }
 
   .ref-img {
@@ -212,8 +212,8 @@
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--accent-glow);
-    background: #7c3aed18;
-    border: 1px solid #7c3aed40;
+    background: #4d8f0018;
+    border: 1px solid #4d8f0040;
     border-radius: 100px;
     padding: 0.2rem 0.75rem;
     margin-bottom: 0.25rem;
@@ -278,13 +278,13 @@
   }
 
   .you-badge {
-    background: #7c3aed25;
+    background: #4d8f0025;
     color: var(--accent-glow);
-    border: 1px solid #7c3aed50;
+    border: 1px solid #4d8f0050;
   }
 
   .opp-badge {
-    background: #1e1e35;
+    background: var(--bg-border);
     color: var(--text-secondary);
     border: 1px solid var(--bg-border);
   }
@@ -385,18 +385,18 @@
     padding: 0.75rem 2.5rem;
     border-radius: 100px;
     border: none;
-    background: linear-gradient(135deg, #7c3aed, #a21caf);
+    background: linear-gradient(135deg, #3a7a00, #6ab000);
     color: #fff;
     font-size: 1rem;
     font-weight: 700;
     cursor: pointer;
     transition: transform 0.15s, box-shadow 0.15s;
-    box-shadow: 0 0 24px #7c3aed50;
+    box-shadow: 0 0 24px #4d8f0050;
   }
 
   .action-btn:hover {
     transform: translateY(-2px);
-    box-shadow: 0 0 40px #a855f770;
+    box-shadow: 0 0 40px #7fc80070;
   }
 
   @media (max-width: 560px) {

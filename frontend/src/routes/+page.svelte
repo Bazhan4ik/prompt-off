@@ -165,7 +165,7 @@
   .orb-left {
     width: 500px;
     height: 500px;
-    background: #7c3aed;
+    background: #4d8f00;
     top: -100px;
     left: -180px;
   }
@@ -173,7 +173,7 @@
   .orb-right {
     width: 400px;
     height: 400px;
-    background: #a21caf;
+    background: #cc1111;
     bottom: -80px;
     right: -120px;
   }
@@ -211,7 +211,7 @@
 
   .title-off {
     color: var(--accent-glow);
-    text-shadow: 0 0 40px #a855f780, 0 0 80px #7c3aed50;
+    text-shadow: 0 0 40px #7fc80080, 0 0 80px #4d8f0060;
   }
 
   .subtitle {
@@ -233,17 +233,17 @@
     font-weight: 700;
     letter-spacing: 0.04em;
     color: #fff;
-    background: linear-gradient(135deg, #7c3aed, #a21caf);
+    background: linear-gradient(135deg, #3a7a00, #6ab000);
     border-radius: 100px;
     cursor: pointer;
     transition: transform 0.15s ease, box-shadow 0.15s ease;
-    box-shadow: 0 0 30px #7c3aed60, 0 4px 20px #00000060;
+    box-shadow: 0 0 30px #4d8f0060, 0 4px 20px #00000060;
     text-decoration: none;
   }
 
   .battle-btn:hover {
     transform: translateY(-3px) scale(1.03);
-    box-shadow: 0 0 60px #a855f780, 0 8px 30px #00000070;
+    box-shadow: 0 0 60px #7fc80080, 0 8px 30px #00000070;
   }
 
   .battle-btn:active {
@@ -254,7 +254,7 @@
     position: absolute;
     inset: 0;
     border-radius: inherit;
-    background: linear-gradient(135deg, #a855f740, #c026d340);
+    background: linear-gradient(135deg, #7fc80040, #6ab00040);
     opacity: 0;
     transition: opacity 0.15s;
   }
@@ -347,7 +347,7 @@
   }
 
   .leaderboard-table thead tr {
-    background: #13132050;
+    background: #0a180a50;
   }
 
   .leaderboard-table th {

@@ -161,7 +161,7 @@
 
       <div class="timer-row">
         <svg class="timer-ring" viewBox="0 0 48 48" width="48" height="48">
-          <circle cx="24" cy="24" r={RADIUS} fill="none" stroke="#1e1e35" stroke-width="4" />
+          <circle cx="24" cy="24" r={RADIUS} fill="none" stroke="#182418" stroke-width="4" />
           <circle
             cx="24" cy="24" r={RADIUS}
             fill="none"
@@ -367,8 +367,8 @@
     letter-spacing: 0.12em;
     text-transform: uppercase;
     color: var(--accent-glow);
-    background: #7c3aed18;
-    border: 1px solid #7c3aed40;
+    background: #4d8f0018;
+    border: 1px solid #4d8f0040;
     border-radius: 100px;
     padding: 0.35rem 1rem;
   }
@@ -378,7 +378,7 @@
     border-radius: 14px;
     overflow: hidden;
     border: 1px solid var(--bg-border);
-    box-shadow: 0 0 40px #7c3aed20;
+    box-shadow: 0 0 40px #4d8f0020;
   }
 
   .ref-image-small {
@@ -444,7 +444,7 @@
   .prompt-input::placeholder { color: var(--text-secondary); opacity: 0.6; }
   .prompt-input:focus {
     border-color: var(--accent);
-    box-shadow: 0 0 0 3px #7c3aed25;
+    box-shadow: 0 0 0 3px #4d8f0025;
   }
 
   .char-count {
@@ -459,17 +459,17 @@
     padding: 1rem;
     border-radius: 100px;
     border: none;
-    background: linear-gradient(135deg, #7c3aed, #a21caf);
+    background: linear-gradient(135deg, #3a7a00, #6ab000);
     color: #fff;
     font-size: 1.1rem;
     font-weight: 700;
     cursor: pointer;
     transition: opacity 0.15s, transform 0.15s, box-shadow 0.15s;
-    box-shadow: 0 0 30px #7c3aed50;
+    box-shadow: 0 0 30px #4d8f0050;
   }
   .submit-btn:hover:not(:disabled) {
     transform: translateY(-2px);
-    box-shadow: 0 0 50px #a855f770;
+    box-shadow: 0 0 50px #7fc80070;
   }
   .submit-btn:disabled {
     opacity: 0.35;

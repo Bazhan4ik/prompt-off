@@ -50,8 +50,8 @@
     <div class="hero-content">
       <p class="eyebrow">AI · Image · Battle</p>
       <h1 class="title">
-        <span class="title-prompt">PROMPT</span>
-        <span class="title-off">OFF</span>
+        <span class="title-prompt">CLASH</span>
+        <span class="title-off">OF SLOP</span>
       </h1>
       <p class="subtitle">
         Write the sharpest prompt. Generate the best image.<br />

@@ -328,10 +328,12 @@ io.on('connection', (socket) => {
           if (winnerName) {
             const s = getOrCreateStats(winnerName);
             s.wins += 1;
-            s.score += 100;
+            s.score += 50;
           }
           if (loserName) {
-            getOrCreateStats(loserName).losses += 1;
+            const s = getOrCreateStats(loserName);
+            s.losses += 1;
+            s.score -= 30;
           }
 
           io.to(roomId).emit('judgment_result', { ...judgment, originalTopic: room.topic, trickType: room.trickType });

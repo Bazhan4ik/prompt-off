@@ -5,12 +5,22 @@
   let leaderboard = [];
   let loading = true;
   let error = null;
+  let totalPlayers = null;
+  let totalGamesPlayed = null;
 
   onMount(async () => {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/leaderboard`);
-      if (!res.ok) throw new Error('Failed to fetch leaderboard');
-      leaderboard = await res.json();
+      const [lbRes, statsRes] = await Promise.all([
+        fetch(`${BACKEND_URL}/api/leaderboard`),
+        fetch(`${BACKEND_URL}/api/stats`),
+      ]);
+      if (!lbRes.ok) throw new Error('Failed to fetch leaderboard');
+      leaderboard = await lbRes.json();
+      if (statsRes.ok) {
+        const stats = await statsRes.json();
+        totalPlayers = stats.totalPlayers;
+        totalGamesPlayed = stats.totalGamesPlayed;
+      }
     } catch (e) {
       error = e.message;
     } finally {
@@ -56,6 +66,20 @@
         Write the sharpest prompt. Generate the best image.<br />
         Let AI decide who wins.
       </p>
+
+      {#if totalPlayers !== null}
+        <div class="stats-row">
+          <div class="stat">
+            <span class="stat-value">{totalPlayers.toLocaleString()}</span>
+            <span class="stat-label">Players</span>
+          </div>
+          <div class="stat-divider"></div>
+          <div class="stat">
+            <span class="stat-value">{totalGamesPlayed.toLocaleString()}</span>
+            <span class="stat-label">Games Played</span>
+          </div>
+        </div>
+      {/if}
 
       <a href="/battle" class="battle-btn">
         <span class="btn-glow"></span>
@@ -194,6 +218,40 @@
     color: var(--text-secondary);
     line-height: 1.65;
     max-width: 480px;
+  }
+
+  /* ── Stats ── */
+  .stats-row {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+  }
+
+  .stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.15rem;
+  }
+
+  .stat-value {
+    font-size: 1.6rem;
+    font-weight: 800;
+    color: var(--text-primary);
+    line-height: 1;
+  }
+
+  .stat-label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-secondary);
+  }
+
+  .stat-divider {
+    width: 1px;
+    height: 2rem;
+    background: var(--bg-border);
   }
 
   /* ── Battle Button ── */

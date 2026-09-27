@@ -50,6 +50,7 @@ const rooms = new Map<string, RoomState>();
 const socketToRoom = new Map<string, string>();
 const playerNames = new Map<string, string>();   // socketId → display name
 const playerStats = new Map<string, PlayerStat>(); // name → cumulative stats
+let totalGamesPlayed = 0;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -237,6 +238,10 @@ app.get('/api/leaderboard', (_req: Request, res: Response) => {
   res.json(buildLeaderboard());
 });
 
+app.get('/api/stats', (_req: Request, res: Response) => {
+  res.json({ totalPlayers: playerStats.size, totalGamesPlayed });
+});
+
 app.get('/api/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok' });
 });
@@ -296,6 +301,7 @@ io.on('connection', (socket) => {
     socket.emit('guess_submitted');
 
     if (room.guesses.size === 2) {
+      totalGamesPlayed += 1;
       const [p1, p2] = room.players;
       const payload = {
         roomId,

@@ -8,7 +8,7 @@
 
   type State = 'naming' | 'waiting' | 'loading_challenge' | 'writing' | 'submitted';
 
-  const TIME_LIMIT = 15;
+  const TIME_LIMIT = 30;
 
   let state: State = 'naming';
   let playerName = '';

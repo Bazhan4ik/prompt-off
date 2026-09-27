@@ -52,6 +52,7 @@
   function joinQueue() {
     const name = playerName.trim();
     if (!name) return;
+    saveNameCookie(name);
     state = 'waiting';
 
     socket = io(BACKEND_URL);
@@ -108,8 +109,21 @@
     });
   }
 
+  function getNameCookie(): string {
+    const match = document.cookie.match(/(?:^|;\s*)playerName=([^;]*)/);
+    return match ? decodeURIComponent(match[1]) : '';
+  }
+
+  function saveNameCookie(name: string) {
+    document.cookie = `playerName=${encodeURIComponent(name)}; max-age=31536000; path=/; SameSite=Lax`;
+  }
+
   onMount(() => {
-    // nothing — socket is created on name submit
+    const saved = getNameCookie();
+    if (saved) {
+      playerName = saved;
+      joinQueue();
+    }
   });
 
   onDestroy(() => {
@@ -163,7 +177,7 @@
       </div>
       <h2 class="big-label">Finding your opponent…</h2>
       <p class="sub">Playing as <strong>{playerName}</strong></p>
-      <button class="ghost-btn" on:click={() => goto('/')}>Cancel</button>
+<button class="ghost-btn" on:click={() => goto('/')}>Cancel</button>
     </div>
 
   <!-- ── Opponent found, generating reference image ── -->
